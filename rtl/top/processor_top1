@@ -1,1 +1,292 @@
 
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Module: mips_processor
+//
+// Description:
+// -----------------------------------------------------------------------------
+// 32-bit Single-Cycle MIPS Processor
+//
+// Architectural Notes:
+// - Single-cycle implementation (each instruction completes in one clock).
+// - Separate instruction and data memory (Harvard style).
+// - All control signals derived purely from opcode (and funct for R-type).
+// - No pipelining, no hazard handling.
+// - PC updated every clock edge.
+//
+// Datapath Order:
+// PC → Instruction Fetch → Decode → Register Read → ALU
+// → Data Memory (if needed) → Write Back → PC Update
+//
+//////////////////////////////////////////////////////////////////////////////////
+
+module mips_processor(
+    input  wire clk,
+    input  wire reset
+);
+
+    // =========================================================================
+    // 1) PROGRAM COUNTER (PC)
+    // =========================================================================
+    // Holds address of current instruction.
+    // Updated on every clock edge.
+
+    wire [31:0] pc_reg;
+    wire [31:0] pc_next;
+
+    pc PC (
+        .clk(clk),
+        .reset(reset),
+        .pc_in(pc_next),
+        .pc_out(pc_reg)
+    );
+
+    // =========================================================================
+    // 2) INSTRUCTION FETCH
+    // =========================================================================
+    // Instruction memory addressed by current PC value.
+    // In single-cycle design, instruction is immediately available.
+
+    wire [31:0] instruction;
+
+    instruction_memory imem (
+        .address(pc_reg),
+        .instruction(instruction)
+    );
+
+    // =========================================================================
+    // 3) INSTRUCTION DECODE
+    // =========================================================================
+    // Extract relevant instruction fields.
+
+    wire [5:0] opcode        = instruction[31:26];
+    wire [4:0] rs            = instruction[25:21];
+    wire [4:0] rt            = instruction[20:16];
+    wire [4:0] rd            = instruction[15:11];
+    wire [5:0] funct         = instruction[5:0];
+    wire [15:0] imm          = instruction[15:0];
+    wire [25:0] jump_address = instruction[25:0];
+
+    // =========================================================================
+    // 4) MAIN CONTROL UNIT
+    // =========================================================================
+    // Generates high-level control signals based on opcode.
+    // Determines data routing and memory access behavior.
+
+    wire       reg_dst;
+    wire       alu_src;
+    wire       mem_to_reg;
+    wire       reg_write;
+    wire       mem_read;
+    wire       mem_write;
+    wire       branch;
+    wire       jump;
+    wire [1:0] alu_op;
+
+    control_unit CU (
+        .opcode(opcode),
+        .reg_dst(reg_dst),
+        .alu_src(alu_src),
+        .mem_to_reg(mem_to_reg),
+        .reg_write(reg_write),
+        .mem_read(mem_read),
+        .mem_write(mem_write),
+        .branch(branch),
+        .alu_op(alu_op),
+        .jump(jump)
+    );
+
+    // =========================================================================
+    // 5) REGISTER FILE
+    // =========================================================================
+    // - Two asynchronous read ports
+    // - One synchronous write port
+
+    wire [31:0] read_data1, read_data2;
+    wire [31:0] write_data_rf;
+    wire [4:0]  write_reg_sel;
+
+    // Destination register selection
+    // R-type → rd
+    // I-type → rt
+
+    wire [31:0] reg_dst_mux_out;
+
+    mux_2to1 reg_dst_mux (
+        .in0({27'b0, rt}),
+        .in1({27'b0, rd}),
+        .sel(reg_dst),
+        .out(reg_dst_mux_out)
+    );
+
+    assign write_reg_sel = reg_dst_mux_out[4:0];
+
+    register_file REG_FILE (
+        .clk(clk),
+        .reg_write(reg_write),
+        .read_reg1(rs),
+        .read_reg2(rt),
+        .write_reg(write_reg_sel),
+        .write_data(write_data_rf),
+        .read_data1(read_data1),
+        .read_data2(read_data2)
+    );
+
+    // =========================================================================
+    // 6) IMMEDIATE SIGN EXTENSION
+    // =========================================================================
+    // Converts 16-bit immediate to 32-bit signed value.
+
+    wire [31:0] sign_ext_imm;
+
+    sign_extend SE (
+        .in(imm),
+        .out(sign_ext_imm)
+    );
+
+    // =========================================================================
+    // 7) ALU CONTROL
+    // =========================================================================
+    // Determines exact ALU operation.
+    // Uses alu_op from main control and funct field for R-type.
+
+    wire [3:0] alu_control;
+
+    alu_control ALU_CTRL (
+        .alu_op(alu_op),
+        .funct(funct),
+        .opcode(opcode),
+        .alu_control(alu_control)
+    );
+
+    // =========================================================================
+    // 8) ALU INPUT SELECTION
+    // =========================================================================
+    // Select between:
+    // - Register operand (R-type)
+    // - Immediate operand (I-type, lw, sw, addi)
+
+    wire [31:0] alu_input_b;
+
+    mux_2to1 alu_input_mux (
+        .in0(read_data2),
+        .in1(sign_ext_imm),
+        .sel(alu_src),
+        .out(alu_input_b)
+    );
+
+    // =========================================================================
+    // 9) ALU EXECUTION
+    // =========================================================================
+    // Performs arithmetic/logic operation.
+    // Zero flag used for branch comparison.
+
+    wire [31:0] alu_result;
+    wire        alu_zero;
+
+    alu ALU (
+        .a(read_data1),
+        .b(alu_input_b),
+        .alu_control(alu_control),
+        .result(alu_result),
+        .zero(alu_zero)
+    );
+
+    // =========================================================================
+    // 10) DATA MEMORY
+    // =========================================================================
+    // Used only for load/store instructions.
+    // Address generated by ALU.
+
+    wire [31:0] mem_read_data;
+
+    data_memory DMEM (
+        .clk(clk),
+        .mem_read(mem_read),
+        .mem_write(mem_write),
+        .address(alu_result),
+        .write_data(read_data2),
+        .read_data(mem_read_data)
+    );
+
+    // =========================================================================
+    // 11) WRITE-BACK STAGE
+    // =========================================================================
+    // Select data to write into register file:
+    // - ALU result (R-type, addi, etc.)
+    // - Memory data (lw)
+
+    mux_2to1 write_back_mux (
+        .in0(alu_result),
+        .in1(mem_read_data),
+        .sel(mem_to_reg),
+        .out(write_data_rf)
+    );
+
+    // =========================================================================
+    // 12) BRANCH DECISION LOGIC
+    // =========================================================================
+    // Branch occurs when:
+    // - branch control asserted
+    // - ALU zero flag matches condition
+
+    wire branch_taken;
+
+    branch_control BR_CTRL (
+        .opcode(opcode),
+        .zero(alu_zero),
+        .branch_taken(branch_taken)
+    );
+
+    wire pc_src = branch & branch_taken;
+
+    // =========================================================================
+    // 13) NEXT PC LOGIC
+    // =========================================================================
+    // Computes:
+    // - Sequential PC (PC + 4)
+    // - Branch target
+    // - Jump target
+
+    wire [31:0] pc_plus_4;
+    wire [31:0] branch_offset;
+    wire [31:0] branch_sum;
+    wire [31:0] pc_branch_or_seq;
+    wire [31:0] pc_jump;
+
+    // PC + 4 (default sequential execution)
+    adder PC_ADDER (
+        .a(pc_reg),
+        .b(32'd4),
+        .result(pc_plus_4)
+    );
+
+    // Branch target calculation
+    assign branch_offset = {sign_ext_imm[29:0], 2'b00};
+
+    adder BRANCH_ADDER (
+        .a(pc_plus_4),
+        .b(branch_offset),
+        .result(branch_sum)
+    );
+
+    // Select branch or sequential
+    mux_2to1 PC_BRANCH_MUX (
+        .in0(pc_plus_4),
+        .in1(branch_sum),
+        .sel(pc_src),
+        .out(pc_branch_or_seq)
+    );
+
+    // Jump target formation
+    assign pc_jump = { pc_plus_4[31:28], jump_address, 2'b00 };
+
+    // Final PC selection
+    mux_2to1 PC_NEXT_MUX (
+        .in0(pc_branch_or_seq),
+        .in1(pc_jump),
+        .sel(jump),
+        .out(pc_next)
+    );
+
+endmodule
