@@ -1,0 +1,78 @@
+`timescale 1ns/1ps
+
+module mips_processor_tb;
+
+    // -------------------------
+    // Testbench Signals
+    // -------------------------
+    reg clk;
+    reg reset;
+
+    // -------------------------
+    // Instantiate DUT
+    // -------------------------
+    mips_processor DUT (
+        .clk(clk),
+        .reset(reset)
+    );
+
+    // -------------------------
+    // Clock Generation (10ns)
+    // -------------------------
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk;
+    end
+
+    // -------------------------
+    // Main Test
+    // -------------------------
+    initial begin
+
+        // Apply reset
+        reset = 1;
+        #20;
+        reset = 0;
+
+        // Load instructions directly
+        DUT.imem.memory[0]  = 32'h2001000A; // addi $1,$0,10
+        DUT.imem.memory[1]  = 32'h20020014; // addi $2,$0,20
+        DUT.imem.memory[2]  = 32'h00221820; // add  $3,$1,$2
+        DUT.imem.memory[3]  = 32'hAC030008; // sw   $3,8($0)
+        DUT.imem.memory[4]  = 32'h8C040008; // lw   $4,8($0)
+        DUT.imem.memory[5]  = 32'h00222822; // sub  $5,$1,$2
+        DUT.imem.memory[6]  = 32'h10830002; // beq  $4,$3,2
+        DUT.imem.memory[7]  = 32'h08000009; // j    9
+        DUT.imem.memory[8]  = 32'h00812025; // or   $4,$4,$1
+        DUT.imem.memory[9]  = 32'h0024302A; // slt  $6,$1,$4
+        DUT.imem.memory[10] = 32'h00863827; // nor  $7,$4,$6
+
+        // Header
+        $display("--------------------------------------------------");
+        $display(" Time |   PC  |  Instr   | R1 R2 R3 R4 R5 R6 R7 ");
+        $display("--------------------------------------------------");
+
+        // Monitor essential signals only
+        $monitor("%4t | %4d | %h | %d %d %d %d %d %d %d",
+            $time,
+            DUT.pc_reg,
+            DUT.instruction,
+            DUT.REG_FILE.registers[1],
+            DUT.REG_FILE.registers[2],
+            DUT.REG_FILE.registers[3],
+            DUT.REG_FILE.registers[4],
+            DUT.REG_FILE.registers[5],
+            DUT.REG_FILE.registers[6],
+            DUT.REG_FILE.registers[7]
+        );
+
+        // Run simulation
+        #400;
+
+        $display("--------------------------------------------------");
+        $display("Simulation finished.");
+        $display("--------------------------------------------------");
+        $stop;
+    end
+
+endmodule
