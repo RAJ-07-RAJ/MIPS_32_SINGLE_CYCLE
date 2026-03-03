@@ -1,1 +1,73 @@
 
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Module Name: mips_top
+//
+// Description:
+// -----------------------------------------------------------------------------
+// This module acts as a DEBUG / OBSERVABILITY WRAPPER around the
+// mips_processor core.
+//
+// Even though we already have the mips_processor (which is the actual CPU),
+// this top module exists for the following architectural reasons:
+//
+// 1) Separation of Core and System
+//    - mips_processor is the CPU core (pure logic).
+//    - mips_top is a system-level wrapper.
+//    - In real FPGA/ASIC design, cores are not exposed directly.
+//
+// 2) Debug Visibility
+//    - Internal signals like PC, instruction, ALU result, memory data
+//      are NOT normally visible outside the core.
+//    - For simulation and FPGA debugging, we expose them here.
+//
+// 3) Clean Hierarchy
+//    - The processor remains reusable.
+//    - This wrapper can be removed or modified without touching core logic.
+//
+//      = System Integration Layer
+//
+//////////////////////////////////////////////////////////////////////////////////
+
+module mips_top (
+    input  wire        clk,
+    input  wire        reset,
+
+    // ===== Observable Outputs =====
+    // These are exported ONLY for debugging / verification
+    output wire [31:0] pc_out,
+    output wire [31:0] instruction_out,
+    output wire [31:0] alu_result_out,
+    output wire [31:0] mem_read_data_out
+);
+
+    // Internal wires to tap important signals
+    wire [31:0] pc_internal;
+    wire [31:0] instruction_internal;
+    wire [31:0] alu_result_internal;
+    wire [31:0] mem_read_data_internal;
+
+    // Instantiate processor core
+    mips_processor uut (
+        .clk(clk),
+        .reset(reset)
+    );
+
+    // ------------------------------------------------------------
+    // NOTE:
+    // This style of hierarchical signal access (uut.pc_reg)
+    // works in simulation.
+    //
+    // However, for clean FPGA/ASIC design,
+    // mips_processor should explicitly declare these
+    // as output ports instead of accessing them hierarchically.
+    //
+    // Direct hierarchical access is NOT recommended for synthesis.
+    // ------------------------------------------------------------
+
+    assign pc_out            = uut.pc_reg;
+    assign instruction_out   = uut.instruction;
+    assign alu_result_out    = uut.alu_result;
+    assign mem_read_data_out = uut.mem_read_data;
+
+endmodule
