@@ -239,6 +239,7 @@ module mips_processor(
     );
 
     wire pc_src = branch & branch_taken;  //branch signal from control_unit
+                                           //branch_taken op from the branch control module
 
     // =========================================================================
     // 13) NEXT PC LOGIC
