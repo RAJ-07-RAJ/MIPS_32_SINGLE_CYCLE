@@ -123,7 +123,7 @@ module mips_processor(
 
     register_file REG_FILE (
         .clk(clk),
-        .reg_write(reg_write),
+        .reg_write(reg_write),// control signal 
         .read_reg1(rs),
         .read_reg2(rt),
         .write_reg(write_reg_sel),
@@ -234,11 +234,11 @@ module mips_processor(
 
     branch_control BR_CTRL (
         .opcode(opcode),
-        .zero(alu_zero),
+        .zero(alu_zero),// control signal from control unit
         .branch_taken(branch_taken)
     );
 
-    wire pc_src = branch & branch_taken;
+    wire pc_src = branch & branch_taken;  //branch signal from control_unit
 
     // =========================================================================
     // 13) NEXT PC LOGIC
