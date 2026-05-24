@@ -1,7 +1,16 @@
+# 32-Bit Single-Cycle MIPS Processor (Verilog)
 
-# 32-Bit Single-Cycle MIPS Processor (RTL Implementation)
+| | |
+|---|---|
+| **Type** | CPU datapath · Digital architecture |
+| **Language** | Verilog |
+| **Architecture** | Harvard · single-cycle |
+| **ISA** | MIPS subset (R-type, I-type, J-type) |
+| **Tools** | Vivado · ModelSim · GTKWave |
 
-## 📌 Project Overview
+---
+
+## Project overview
 
 This project implements a **32-bit Single-Cycle MIPS Processor** in Verilog HDL.
 
@@ -76,21 +85,28 @@ This processor supports a subset of the MIPS ISA:
 | j           | Jump to target address |
 
 ---
-Good. That’s a valid structural improvement.
 
-You’re right:
+## Directory structure
 
-* The **control signal meaning table** must appear **before**
-* The instruction-wise control signal table
-* And the BEQ explanation section should be removed (since ALUOp meaning already defines it)
+```
+MIPS_32_SINGLE_CYCLE/
+├── rtl/
+│   ├── alu/              # ALU + ALU control
+│   ├── control unit/     # Main control + branch control
+│   ├── data path/        # PC, regfile, memory, muxes, adders
+│   └── top/              # processor_top integration
+├── test_bench/
+│   └── processor_top_tb  # Top-level verification
+└── README.md
+```
 
-Below is the corrected and cleanly structured section of your README.
+## Simulation
 
-You can directly replace the Control Unit section with this.
+Add all RTL under `rtl/` plus `test_bench/processor_top_tb` to your simulator file list. Observe PC, instruction, ALU result, and memory write-back on the waveform.
 
 ---
 
-# 🧩 Control Unit Design
+# Control unit design
 
 The Control Unit performs opcode-based decoding and generates high-level control signals that drive the datapath.
 
